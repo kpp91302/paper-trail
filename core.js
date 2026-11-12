@@ -117,6 +117,22 @@
     const s = slug(title, 48) || "reading";
     return "up-" + String(date || "").replace(/-/g, "") + "-" + s;
   }
+  // Email clients wrap links in redirectors (Outlook Safe Links, Google) that
+  // hide the real address and carry the recipient's email and tracking data.
+  function unwrapLink(link) {
+    let cur = String(link || "").trim();
+    for (let i = 0; i < 3; i++) {
+      let u; try { u = new URL(cur); } catch (e) { return cur; }
+      const host = u.hostname.toLowerCase();
+      let inner = null;
+      if (host.endsWith("safelinks.protection.outlook.com")) inner = u.searchParams.get("url");
+      else if ((host === "www.google.com" || host === "google.com") && u.pathname === "/url") inner = u.searchParams.get("q") || u.searchParams.get("url");
+      else if (host === "urldefense.com" || host === "urldefense.proofpoint.com") inner = u.searchParams.get("u");
+      if (!inner || !/^https?:\/\//i.test(inner)) return cur;
+      cur = inner;
+    }
+    return cur;
+  }
   function parseInboxPath(path) { const m = INBOX_FILE.exec(path); return m ? m[1] : null; }
 
   function pearson(xs, ys) {
@@ -139,7 +155,7 @@
     return { pts, mae, r: pearson(pts.map((q) => q.score), pts.map((q) => q.rating)) };
   }
 
-  const api = { RUN_FILE, INBOX_FILE, slug, idForReading, parseInboxPath, emptyUser, normalizeUser, applyOps, parseRunPath, mergeRuns, calibration, pearson };
+  const api = { RUN_FILE, INBOX_FILE, unwrapLink, slug, idForReading, parseInboxPath, emptyUser, normalizeUser, applyOps, parseRunPath, mergeRuns, calibration, pearson };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PTCore = api;
 })(typeof window !== "undefined" ? window : globalThis);

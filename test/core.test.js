@@ -59,4 +59,7 @@ assert.ok(/^[a-z0-9-]+$/.test(C.idForReading("Über café — ünïcode!!", "", 
 let t2 = C.applyOps(null, [{ op: "teach", id: "a", value: true }]); assert.strictEqual(t2.papers.a.teach, true);
 t2 = C.applyOps(t2, [{ op: "teach", id: "a", value: false }]); assert.strictEqual(t2.papers.a.teach, false);
 t2 = C.applyOps(t2, [{ op: "teach", id: "a", value: null }]); assert.strictEqual(t2.papers.a.teach, undefined);
+assert.strictEqual(C.unwrapLink("https://nam04.safelinks.protection.outlook.com/?url=https%3A%2F%2Falready-clean.goodfire.com%2F&data=05%7Cx%40vt.edu&reserved=0"), "https://already-clean.goodfire.com/");
+assert.strictEqual(C.unwrapLink("https://www.google.com/url?q=https://arxiv.org/abs/2611.13560&source=gmail"), "https://arxiv.org/abs/2611.13560");
+assert.strictEqual(C.unwrapLink("https://arxiv.org/abs/2611.13560"), "https://arxiv.org/abs/2611.13560");
 console.log("core tests passed");

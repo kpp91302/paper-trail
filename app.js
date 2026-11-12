@@ -433,7 +433,7 @@
     const msg = h("p", { class: "form-msg", role: "status" }, S.uploading);
     const submit = async (e) => {
       e.preventDefault();
-      const title = f.title.value.trim(), link = f.link.value.trim(), file = f.file.files[0];
+      const title = f.title.value.trim(), link = Core.unwrapLink(f.link.value.trim()), file = f.file.files[0];
       if (!title) { msg.textContent = "Add a title so you can find it later."; f.title.focus(); return; }
       if (!file && !link) { msg.textContent = "Attach a PDF or paste a link."; return; }
       if (file && file.size > MAX_UPLOAD_MB * 1024 * 1024) { msg.textContent = "That PDF is over " + MAX_UPLOAD_MB + " MB. Paste a link to it instead."; return; }
