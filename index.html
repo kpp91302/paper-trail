@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Paper Trail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1><a href="#new">Paper Trail</a></h1>
+      <span class="sync" id="sync" role="status" aria-live="polite"></span>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="Views">
+      <a href="#new" data-view="new">New</a>
+      <a href="#daily" data-view="daily">Daily</a>
+      <a href="#weekly" data-view="weekly">Weekly ML</a>
+      <a href="#eos" data-view="eos">Edge of Stability</a>
+      <a href="#to-rate" data-view="to-rate">To rate <span class="count" id="c-to-rate"></span></a>
+      <a href="#saved" data-view="saved">Saved <span class="count" id="c-saved"></span></a>
+      <a href="#profile" data-view="profile">Profile</a>
+      <a href="#settings" data-view="settings" aria-label="Settings">Settings</a>
+    </nav>
+  </header>
+
+  <section class="controls" id="controls" hidden>
+    <input type="search" id="q" placeholder="Search titles, authors, keywords" aria-label="Search">
+    <select id="sort" aria-label="Sort">
+      <option value="date">Newest first</option>
+      <option value="worth">Highest worth-reading score</option>
+      <option value="mine">My rating</option>
+    </select>
+    <label class="check"><input type="checkbox" id="hide-done"> Hide rated and skipped</label>
+  </section>
+
+  <main id="main"><p class="empty">Loading…</p></main>
+</div>
+
+<div class="toast" id="toast" role="status" hidden>
+  <span id="toast-text"></span>
+  <button type="button" id="toast-undo">Undo</button>
+</div>
+
+<script src="config.js"></script>
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
