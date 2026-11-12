@@ -114,6 +114,25 @@ button { font: inherit; cursor: pointer; }
 .addform input[type="file"] { padding: 6px; border: 1px dashed var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; font-size: 0.85rem; }
 .addform textarea { min-height: 64px; resize: vertical; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.achips { display: flex; flex-wrap: wrap; gap: 6px; }
+.achip { display: inline-flex; gap: 5px; align-items: baseline; font-size: 0.78rem; padding: 2px 9px; border-radius: 999px; background: var(--chip); color: var(--ink); text-decoration: none; }
+.achip b { font-family: var(--f-mono); font-weight: 500; }
+.achip small { color: var(--muted); }
+.achip.hi { background: var(--good-soft); color: var(--good); }
+.achip.lo { background: var(--accent-soft); color: var(--accent); }
+.authors-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.arow + .arow { border-top: 1px solid var(--line); }
+.ahead { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; border: 0; background: none; color: var(--ink); padding: 12px 16px; text-align: left; }
+.ahead:hover { background: var(--bg); }
+.aname { font-weight: 600; }
+.astat { display: inline-flex; gap: 10px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.astat b { font-family: var(--f-display); font-size: 1.15rem; min-width: 2.2em; text-align: right; }
+.astat small { color: var(--muted); font-size: 0.8rem; }
+.apapers { list-style: none; margin: 0; padding: 0 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+.apapers li { display: grid; grid-template-columns: 3.2em minmax(0, 1fr); gap: 2px 10px; font-size: 0.9rem; }
+.apapers .ar { grid-row: span 2; font-family: var(--f-mono); color: var(--muted); }
+.apapers a { color: var(--ink); }
+.apapers small { color: var(--muted); font-size: 0.78rem; }
 .form-msg { margin: 0; color: var(--muted); font-size: 0.88rem; }
 .form-msg:empty { display: none; }
 .note textarea { width: 100%; min-height: 70px; resize: vertical; }

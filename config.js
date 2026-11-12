@@ -4,6 +4,7 @@ window.PT_CONFIG = {
   owner: "kpp91302",
   dataRepo: "paper-trail-data",
   branch: "main",
-  // How many digest runs to load at first (about ten weeks). Older runs load on request.
-  initialRuns: 90
+  // Run files to load at first. Files older than 90 days are folded into
+  // archive/ by the daily run, so this covers everything still current.
+  initialRuns: 200
 };

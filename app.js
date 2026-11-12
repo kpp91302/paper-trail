@@ -7,7 +7,7 @@
   const API = "https://api.github.com";
   const FEEDS = { daily: "Daily", weekly: "Weekly ML", eos: "Edge of Stability", assigned: "Assigned" };
   const KINDS = { paper: "Paper", hf: "Hugging Face", github: "GitHub", blog: "Blog" };
-  const VIEWS = ["new", "assigned", "daily", "weekly", "eos", "to-rate", "saved", "profile", "settings"];
+  const VIEWS = ["new", "assigned", "daily", "weekly", "eos", "to-rate", "saved", "authors", "profile", "settings"];
   const MAX_UPLOAD_MB = 50;
   const NEW_DAYS = 21;
   const EMBED_TARGET = 40, EMBED_LOW = 10;
@@ -38,7 +38,7 @@
     showAdd: false,
     uploading: "",
   };
-  const ui = { view: "new", q: "", sort: "date", hideDone: false };
+  const ui = { view: "new", q: "", sort: "date", hideDone: false, authorSort: "adjusted", authorMin: true, openAuthor: null };
 
   // ---------- small DOM helper ----------
   const $ = (id) => document.getElementById(id);
@@ -161,7 +161,15 @@
       const inboxFiles = (tree.tree || []).filter((t) => t.type === "blob" && Core.parseInboxPath(t.path));
       const inbox = await mapLimit(inboxFiles, 6, async (t) => { try { return await readBlob(t.sha); } catch (e) { return null; } });
       S.inbox = new Map(inbox.filter((x) => x && x.id).map((x) => [x.id, x]));
-      S.inboxShas = inboxFiles.map((t) => t.sha);
+      const metaFiles = (tree.tree || []).filter((t) => t.type === "blob" && Core.META_FILE.test(t.path));
+      const archiveFiles = (tree.tree || []).filter((t) => t.type === "blob" && Core.ARCHIVE_FILE.test(t.path));
+      const [metas, archives] = await Promise.all([
+        mapLimit(metaFiles, 6, async (t) => { try { return await readBlob(t.sha); } catch (e) { return null; } }),
+        mapLimit(archiveFiles, 4, async (t) => { try { return await readBlob(t.sha); } catch (e) { return null; } }),
+      ]);
+      S.metas = metas.filter(Boolean);
+      S.archiveRuns = archives.flatMap((d) => Core.runsFromArchive(d));
+      S.inboxShas = [...inboxFiles, ...metaFiles, ...archiveFiles].map((t) => t.sha);
       S.remoteUser = Core.normalizeUser(user.data); S.userSha = user.sha;
       S.profile = profile.data;
       S.runs = []; S.runsLoaded = 0;
@@ -182,8 +190,19 @@
       catch (e) { return { ...t, papers: [], failed: true }; }
     });
     S.runs.push(...files); S.runsLoaded += next.length;
-    S.papers = Core.mergeRuns(S.runs);
+    rebuildPapers();
     if (rerender) render();
+  }
+
+  function rebuildPapers() {
+    S.papers = Core.applyMeta(Core.mergeRuns([...(S.archiveRuns || []), ...S.runs]), S.metas || []);
+    S.authorCache = null;
+  }
+  // Author stats depend on ratings, so they are recomputed when either changes.
+  function authors() {
+    const sig = S.pending.length + ":" + (S.userSha || "") + ":" + S.papers.size;
+    if (!S.authorCache || S.authorCache.sig !== sig) S.authorCache = { sig, stats: Core.authorStats(S.papers, user()) };
+    return S.authorCache.stats;
   }
 
   // ---------- writing your actions ----------
@@ -314,6 +333,17 @@
       s.teach === undefined ? h("small", null, "Not counted until you choose Yes") : null);
   }
 
+  function authorChips(p) {
+    if (!Array.isArray(p.authorList) || !p.authorList.length) return null;
+    const st = authors();
+    const known = p.authorList.map((n) => st.byKey.get(Core.authorKey(n))).filter((a) => a && a.avg != null);
+    if (!known.length) return null;
+    known.sort((a, b) => b.avg - a.avg);
+    return h("div", { class: "achips", "aria-label": "Your average rating for these authors" },
+      known.slice(0, 4).map((a) => h("a", { class: "achip" + (a.avg >= 7.5 ? " hi" : a.avg <= 4 ? " lo" : ""), href: "#authors", onclick: () => { ui.openAuthor = a.key; ui.scrollToAuthor = a.key; ui.authorMin = false; ui.q = ""; $("q").value = ""; } },
+        a.name, h("b", null, a.avg.toFixed(1)), h("small", null, "(" + a.rated + ")"))));
+  }
+
   function card(p) {
     const s = stateOf(p.id);
     const isAssigned = (p.feeds || []).includes("assigned");
@@ -339,6 +369,7 @@
           p.source ? h("span", null, p.source) : null),
         p.url ? h("h3", null, h("a", { href: p.url, target: "_blank", rel: "noopener", onclick: () => act({ op: "open", id: p.id }) }, p.title)) : h("h3", null, p.title),
         p.authors ? h("div", { class: "authors" }, p.authors) : null,
+        authorChips(p),
         isAssigned ? assignedLine(p) : null),
       w.score ? h("div", { class: "worth" + (w.score >= 8 ? " hi" : ""), title: "Claude's worth-reading score" },
         h("b", null, String(w.score), h("small", null, "/10")), h("span", null, "Worth reading")) : null,
@@ -487,6 +518,47 @@
     return nodes;
   }
 
+  function authorsView() {
+    const st = authors();
+    const ratedTotal = Object.values(user().papers).filter((x) => x.rating).length;
+    let list = st.authors.slice();
+    if (ui.authorMin) list = list.filter((a) => a.avg != null);
+    if (ui.q) list = list.filter((a) => a.key.includes(Core.authorKey(ui.q)));
+    const sorters = {
+      adjusted: (a, b) => (b.avg != null) - (a.avg != null) || (b.adjusted ?? -1) - (a.adjusted ?? -1) || b.papers.length - a.papers.length,
+      rated: (a, b) => b.rated - a.rated || (b.adjusted ?? -1) - (a.adjusted ?? -1),
+      papers: (a, b) => b.papers.length - a.papers.length || b.rated - a.rated,
+      name: (a, b) => a.name.split(" ").pop().localeCompare(b.name.split(" ").pop()),
+    };
+    list.sort(sorters[ui.authorSort] || sorters.adjusted);
+    const sortSel = h("select", { id: "author-sort", "aria-label": "Sort authors", onchange: (e) => { ui.authorSort = e.target.value; render(); } },
+      [["adjusted", "Best for me (adjusted average)"], ["rated", "Most rated"], ["papers", "Most papers sent"], ["name", "Last name"]].map(([v, l]) => h("option", { value: v, selected: ui.authorSort === v }, l)));
+    const minBox = h("label", { class: "check" }, h("input", { type: "checkbox", id: "author-min", checked: ui.authorMin, onchange: (e) => { ui.authorMin = e.target.checked; render(); } }), " Only authors with " + Core.AUTHOR_MIN_RATED + "+ ratings");
+    const nodes = [
+      h("p", { class: "intro" }, "Your average rating of each researcher's papers. On papers with 6 or more authors, middle authors get half weight. The ranking pulls authors with few ratings toward your overall average (" + st.mean.toFixed(1) + ") until there's more evidence."),
+      h("div", { class: "controls" }, sortSel, minBox),
+    ];
+    if (!st.authors.length) nodes.push(h("p", { class: "empty" }, "No author data yet. Full author lists arrive with each new digest, and older papers are filled in over the next few days."));
+    else if (!list.length) nodes.push(h("p", { class: "empty" }, ui.q ? "No author matches “" + ui.q + "”." : "No author has " + Core.AUTHOR_MIN_RATED + " rated papers yet (" + ratedTotal + " rating" + (ratedTotal === 1 ? "" : "s") + " so far). Untick the box to see everyone."));
+    else nodes.push(h("div", { class: "authors-list" }, list.slice(0, 300).map((a) => {
+      const open = ui.openAuthor === a.key;
+      return h("div", { class: "arow" + (open ? " open" : ""), id: "a-" + a.key.replace(/\s/g, "-") },
+        h("button", { type: "button", class: "ahead", "aria-expanded": String(open), onclick: () => { ui.openAuthor = open ? null : a.key; render(); } },
+          h("span", { class: "aname" }, a.name),
+          h("span", { class: "astat" },
+            h("b", null, a.avg != null ? a.avg.toFixed(1) : "–"),
+            h("small", null, a.rated + " rated · " + a.papers.length + " paper" + (a.papers.length === 1 ? "" : "s") + (a.adjusted != null ? " · adj " + a.adjusted.toFixed(1) : "")))),
+        open ? h("ul", { class: "apapers" }, a.papers.map((x) => {
+          const p = S.papers.get(x.id) || {};
+          return h("li", null,
+            h("span", { class: "ar" }, x.rating ? x.rating + "/10" : "–"),
+            p.url ? h("a", { href: p.url, target: "_blank", rel: "noopener", onclick: () => act({ op: "open", id: x.id }) }, x.title) : h("span", null, x.title),
+            h("small", null, [x.role !== "sole" ? x.role + " author" : "sole author", x.weight < 1 ? "half weight" : null, (p.feeds || []).map((f) => FEEDS[f] || f).join(", "), x.lastSeen].filter(Boolean).join(" · ")));
+        })) : null);
+    })));
+    return nodes;
+  }
+
   function rankIn(p, feed, date) { const a = p.appearances.find((x) => x.feed === feed && x.date === date); return a ? a.rank || 99 : 99; }
 
   function termEditor(list, label, cls) {
@@ -585,6 +657,8 @@
     }
     setSync();
     const listView = ui.view !== "profile" && ui.view !== "settings";
+    $("sort").hidden = $("hide-done").parentElement.hidden = ui.view === "authors";
+    $("q").placeholder = ui.view === "authors" ? "Search authors" : "Search titles, authors, keywords";
     $("controls").hidden = !(listView && S.loaded);
     if (S.loaded) {
       const toRate = itemsFor("to-rate").length, saved = [...S.papers.values()].filter((p) => stateOf(p.id).saved).length;
@@ -596,19 +670,21 @@
     else if (S.error) nodes.push(h("p", { class: "notice err" }, S.error), h("button", { type: "button", class: "btn", onclick: loadAll }, "Try again"));
     else if (!S.loaded) nodes.push(h("p", { class: "empty" }, "Loading your papers…"));
     else if (ui.view === "profile") nodes.push(...profileView());
-    else if (!S.papers.size && ui.view !== "assigned") nodes.push(h("p", { class: "empty" }, "No digests yet. Papers appear here after the next scheduled run."));
+    else if (!S.papers.size && ui.view !== "assigned" && ui.view !== "authors") nodes.push(h("p", { class: "empty" }, "No digests yet. Papers appear here after the next scheduled run."));
     else if (ui.view === "assigned") nodes.push(h("div", { class: "list" }, assignedView()));
+    else if (ui.view === "authors") nodes.push(h("div", { class: "list" }, authorsView()));
     else nodes.push(h("div", { class: "list" }, paperList(ui.view)));
     const focusId = document.activeElement && document.activeElement.id;
     $("main").replaceChildren(...nodes);
-    if (focusId && $(focusId) && /^(note-|add-|token|ar-)/.test(focusId)) $(focusId).focus();
+    if (focusId && $(focusId) && /^(note-|add-|token|ar-|author-)/.test(focusId)) $(focusId).focus();
+    if (ui.view === "authors" && ui.scrollToAuthor) { const el = document.getElementById("a-" + ui.scrollToAuthor.replace(/\s/g, "-")); ui.scrollToAuthor = null; if (el) el.scrollIntoView({ block: "center" }); }
   }
 
   function route() {
     const v = (location.hash || "").slice(1);
     ui.view = VIEWS.includes(v) ? v : (S.token ? "new" : "settings");
     if (ui.view === "new" && ui.sort === "mine") ui.sort = "date";
-    window.scrollTo(0, 0);
+    if (!ui.scrollToAuthor) window.scrollTo(0, 0);
     render();
   }
   window.addEventListener("hashchange", route);
