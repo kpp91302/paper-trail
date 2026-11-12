@@ -298,7 +298,8 @@
       h("div", { class: "body" },
         w.reason ? h("p", { class: "reason" }, h("strong", null, "Why: "), w.reason,
           (w.quality || w.fit) ? " (quality " + (w.quality || "–") + ", fit " + (w.fit || "–") + ")" : "") : null,
-        p.summary ? h("p", { class: "summary" }, p.summary) : null,
+        p.summary ? h("p", { class: "summary" }, p.summary)
+          : p.needsSummary ? h("p", { class: "reason" }, "Summary and score pending: the abstract couldn't be read when this was imported. The next weekly run fills them in.") : null,
         (p.keywords || []).length ? h("div", { class: "kw" }, p.keywords.map((k) => h("span", null, k))) : null),
       h("div", { class: "actions" },
         pdf ? h("a", { class: "btn primary", href: pdf, target: "_blank", rel: "noopener", onclick: () => act({ op: "download", id: p.id }) }, "Download PDF")
