@@ -152,7 +152,7 @@
         readJsonFile("profile.json"),
       ]);
       S.tree = (tree.tree || []).map((t) => ({ ...t, run: t.type === "blob" ? Core.parseRunPath(t.path) : null }))
-        .filter((t) => t.run).map((t) => ({ path: t.path, sha: t.sha, date: t.run.date, feed: t.run.feed }))
+        .filter((t) => t.run).map((t) => ({ path: t.path, sha: t.sha, date: t.run.date, feed: t.run.feed, seq: t.run.seq }))
         .sort((a, b) => b.date.localeCompare(a.date) || a.feed.localeCompare(b.feed));
       S.remoteUser = Core.normalizeUser(user.data); S.userSha = user.sha;
       S.profile = profile.data;

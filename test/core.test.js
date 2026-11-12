@@ -29,7 +29,10 @@ assert.deepStrictEqual(u.profileOverrides.block, []);
 // does not mutate input
 const before = JSON.stringify(u); C.applyOps(u, [{ op: "rate", id: "z", value: 3 }]); assert.strictEqual(JSON.stringify(u), before);
 // parseRunPath
-assert.deepStrictEqual(C.parseRunPath("papers/2026-11-18-eos.json"), { date: "2026-11-18", feed: "eos" });
+assert.deepStrictEqual(C.parseRunPath("papers/2026-11-18-eos.json"), { date: "2026-11-18", feed: "eos", seq: 1 });
+assert.deepStrictEqual(C.parseRunPath("papers/2026-11-18-daily-2.json"), { date: "2026-11-18", feed: "daily", seq: 2 });
+const bf = C.mergeRuns([{ feed: "weekly", date: "2026-11-18", seq: 1, papers: [{ id: "q", title: "Q", summary: "", needsSummary: true }] }, { feed: "weekly", date: "2026-11-25", seq: 1, papers: [{ id: "q", title: "Q", summary: "Full.", needsSummary: false, worth: { score: 6 } }] }]);
+assert.strictEqual(bf.get("q").needsSummary, false); assert.strictEqual(bf.get("q").summary, "Full.");
 assert.strictEqual(C.parseRunPath("papers/notes.json"), null);
 // mergeRuns
 const m = C.mergeRuns([

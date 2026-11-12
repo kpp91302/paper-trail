@@ -2,7 +2,7 @@
 (function (root) {
   "use strict";
 
-  const RUN_FILE = /^papers\/(\d{4}-\d{2}-\d{2})-(daily|weekly|eos)\.json$/;
+  const RUN_FILE = /^papers\/(\d{4}-\d{2}-\d{2})-(daily|weekly|eos)(?:-(\d+))?\.json$/;
 
   function emptyUser() {
     return { version: 1, papers: {}, profileOverrides: { boost: [], block: [] } };
@@ -72,14 +72,14 @@
 
   function parseRunPath(path) {
     const m = RUN_FILE.exec(path);
-    return m ? { date: m[1], feed: m[2] } : null;
+    return m ? { date: m[1], feed: m[2], seq: m[3] ? Number(m[3]) : 1 } : null;
   }
 
   // Merge run files into one record per paper. A paper sent by two digests keeps
   // one card that lists both; its latest appearance supplies summary and score.
   function mergeRuns(runs) {
     const map = new Map();
-    const sorted = [...runs].sort((a, b) => a.date.localeCompare(b.date) || a.feed.localeCompare(b.feed));
+    const sorted = [...runs].sort((a, b) => a.date.localeCompare(b.date) || (a.seq || 1) - (b.seq || 1) || a.feed.localeCompare(b.feed));
     for (const run of sorted) {
       for (const raw of run.papers || []) {
         if (!raw || !raw.id || !raw.title) continue;
