@@ -62,4 +62,5 @@ t2 = C.applyOps(t2, [{ op: "teach", id: "a", value: null }]); assert.strictEqual
 assert.strictEqual(C.unwrapLink("https://nam04.safelinks.protection.outlook.com/?url=https%3A%2F%2Falready-clean.goodfire.com%2F&data=05%7Cx%40vt.edu&reserved=0"), "https://already-clean.goodfire.com/");
 assert.strictEqual(C.unwrapLink("https://www.google.com/url?q=https://arxiv.org/abs/2611.13560&source=gmail"), "https://arxiv.org/abs/2611.13560");
 assert.strictEqual(C.unwrapLink("https://arxiv.org/abs/2611.13560"), "https://arxiv.org/abs/2611.13560");
+assert.strictEqual(C.idForReading("x", "https://arxiv.org/html/2610.15223", "2026-11-12"), "ax-2610-15223");
 console.log("core tests passed");

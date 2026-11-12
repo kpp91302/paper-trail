@@ -112,7 +112,7 @@
       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, max || 60).replace(/-+$/g, "");
   }
   function idForReading(title, link, date) {
-    const m = /arxiv\.org\/(?:abs|pdf)\/(\d{4}\.\d{4,5})/i.exec(link || "") || /huggingface\.co\/papers\/(\d{4}\.\d{4,5})/i.exec(link || "");
+    const m = /arxiv\.org\/(?:abs|pdf|html)\/(\d{4}\.\d{4,5})/i.exec(link || "") || /huggingface\.co\/papers\/(\d{4}\.\d{4,5})/i.exec(link || "");
     if (m) return "ax-" + m[1].replace(".", "-");
     const s = slug(title, 48) || "reading";
     return "up-" + String(date || "").replace(/-/g, "") + "-" + s;
