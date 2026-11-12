@@ -5,9 +5,10 @@
   const CFG = window.PT_CONFIG;
   const Core = window.PTCore;
   const API = "https://api.github.com";
-  const FEEDS = { daily: "Daily", weekly: "Weekly ML", eos: "Edge of Stability" };
+  const FEEDS = { daily: "Daily", weekly: "Weekly ML", eos: "Edge of Stability", assigned: "Assigned" };
   const KINDS = { paper: "Paper", hf: "Hugging Face", github: "GitHub", blog: "Blog" };
-  const VIEWS = ["new", "daily", "weekly", "eos", "to-rate", "saved", "profile", "settings"];
+  const VIEWS = ["new", "assigned", "daily", "weekly", "eos", "to-rate", "saved", "profile", "settings"];
+  const MAX_UPLOAD_MB = 50;
   const NEW_DAYS = 21;
   const EMBED_TARGET = 40, EMBED_LOW = 10;
 
@@ -33,6 +34,9 @@
     error: "",
     sync: "idle",
     openNotes: new Set(),
+    inbox: new Map(),          // id -> reading added on the site, waiting for its summary
+    showAdd: false,
+    uploading: "",
   };
   const ui = { view: "new", q: "", sort: "date", hideDone: false };
 
@@ -154,11 +158,15 @@
       S.tree = (tree.tree || []).map((t) => ({ ...t, run: t.type === "blob" ? Core.parseRunPath(t.path) : null }))
         .filter((t) => t.run).map((t) => ({ path: t.path, sha: t.sha, date: t.run.date, feed: t.run.feed, seq: t.run.seq }))
         .sort((a, b) => b.date.localeCompare(a.date) || a.feed.localeCompare(b.feed));
+      const inboxFiles = (tree.tree || []).filter((t) => t.type === "blob" && Core.parseInboxPath(t.path));
+      const inbox = await mapLimit(inboxFiles, 6, async (t) => { try { return await readBlob(t.sha); } catch (e) { return null; } });
+      S.inbox = new Map(inbox.filter((x) => x && x.id).map((x) => [x.id, x]));
+      S.inboxShas = inboxFiles.map((t) => t.sha);
       S.remoteUser = Core.normalizeUser(user.data); S.userSha = user.sha;
       S.profile = profile.data;
       S.runs = []; S.runsLoaded = 0;
       await loadMoreRuns(CFG.initialRuns || 90, false);
-      pruneBlobCache(new Set(S.runs.map((r) => r.sha)));
+      pruneBlobCache(new Set([...S.runs.map((r) => r.sha), ...(S.inboxShas || [])]));
       S.loaded = true;
     } catch (e) {
       S.error = explain(e);
@@ -247,7 +255,7 @@
     let arr = [...S.papers.values()];
     const u = user();
     const st = (p) => u.papers[p.id] || {};
-    if (view === "new") arr = arr.filter((p) => !touched(st(p)) && daysAgo(p.lastSeen) <= NEW_DAYS);
+    if (view === "new") arr = arr.filter((p) => !touched(st(p)) && daysAgo(p.lastSeen) <= NEW_DAYS && p.feeds.some((f) => f !== "assigned"));
     else if (FEEDS[view]) arr = arr.filter((p) => p.feeds.includes(view));
     else if (view === "to-rate") arr = arr.filter((p) => (st(p).downloads || st(p).opens) && !st(p).rating && !st(p).skipped);
     else if (view === "saved") arr = arr.filter((p) => st(p).saved);
@@ -269,8 +277,46 @@
     return m ? "https://arxiv.org/pdf/" + m[1] : null;
   }
 
+  // Uploaded PDFs live in the private repo, so they are fetched with the token
+  // and opened from a local blob URL. The tab opens first, inside the tap, so
+  // iPad Safari doesn't block it.
+  async function openUpload(p) {
+    const name = (p.uploadPath || "").split("/").pop() || "reading.pdf";
+    act({ op: "download", id: p.id });
+    const win = window.open("", "_blank");
+    if (win) { try { win.document.title = "Opening " + name; win.document.body.textContent = "Opening " + name + "…"; } catch (e) {} }
+    try {
+      const res = await fetch(API + repoPath() + "/contents/" + p.uploadPath + "?ref=" + CFG.branch, {
+        cache: "no-store", headers: { Accept: "application/vnd.github.raw+json", Authorization: "Bearer " + S.token } });
+      if (!res.ok) throw Object.assign(new Error("GitHub " + res.status), { status: res.status });
+      const url = URL.createObjectURL(new Blob([await res.blob()], { type: "application/pdf" }));
+      if (win) win.location.href = url;
+      else { const a = h("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove(); }
+      setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
+    } catch (e) {
+      if (win) win.close();
+      toast("Couldn't open the PDF. " + explain(e));
+    }
+  }
+  function assignedLine(p) {
+    const a = p.assigned || {};
+    const bits = [];
+    if (a.by) bits.push("Assigned by " + a.by);
+    if (a.due) bits.push("due " + fmtDay(a.due));
+    if (!bits.length && !a.note) return null;
+    return h("p", { class: "assigned" }, bits.join(" · "), a.note ? h("span", null, (bits.length ? " — " : "") + a.note) : null);
+  }
+  function teachToggle(p, s) {
+    return h("div", { class: "teach", role: "group", "aria-label": "Use this paper for recommendations" },
+      h("span", null, "Use for recommendations"),
+      h("button", { type: "button", class: "btn", "aria-pressed": String(s.teach === true), onclick: () => act({ op: "teach", id: p.id, value: s.teach === true ? null : true }) }, "Yes"),
+      h("button", { type: "button", class: "btn", "aria-pressed": String(s.teach === false), onclick: () => act({ op: "teach", id: p.id, value: s.teach === false ? null : false }) }, "No"),
+      s.teach === undefined ? h("small", null, "Not counted until you choose Yes") : null);
+  }
+
   function card(p) {
     const s = stateOf(p.id);
+    const isAssigned = (p.feeds || []).includes("assigned");
     const w = p.worth || {};
     const pdf = pdfOf(p);
     const status = [];
@@ -291,19 +337,22 @@
           h("span", null, p.feeds.map((f) => FEEDS[f] || f).join(" · ")),
           p.pubDate ? h("span", null, p.pubDate) : null,
           p.source ? h("span", null, p.source) : null),
-        h("h3", null, h("a", { href: p.url, target: "_blank", rel: "noopener", onclick: () => act({ op: "open", id: p.id }) }, p.title)),
-        p.authors ? h("div", { class: "authors" }, p.authors) : null),
+        p.url ? h("h3", null, h("a", { href: p.url, target: "_blank", rel: "noopener", onclick: () => act({ op: "open", id: p.id }) }, p.title)) : h("h3", null, p.title),
+        p.authors ? h("div", { class: "authors" }, p.authors) : null,
+        isAssigned ? assignedLine(p) : null),
       w.score ? h("div", { class: "worth" + (w.score >= 8 ? " hi" : ""), title: "Claude's worth-reading score" },
         h("b", null, String(w.score), h("small", null, "/10")), h("span", null, "Worth reading")) : null,
       h("div", { class: "body" },
         w.reason ? h("p", { class: "reason" }, h("strong", null, "Why: "), w.reason,
           (w.quality || w.fit) ? " (quality " + (w.quality || "–") + ", fit " + (w.fit || "–") + ")" : "") : null,
         p.summary ? h("p", { class: "summary" }, p.summary)
-          : p.needsSummary ? h("p", { class: "reason" }, "Summary and score pending: the abstract couldn't be read when this was imported. The next weekly run fills them in.") : null,
+          : p.pending ? h("p", { class: "reason" }, "Summary and score arrive with the next daily run (6:38am).")
+          : p.needsSummary ? h("p", { class: "reason" }, isAssigned ? "Summary pending: the file or link couldn't be read. The next daily run tries again." : "Summary and score pending: the abstract couldn't be read when this was imported. The next weekly run fills them in.") : null,
         (p.keywords || []).length ? h("div", { class: "kw" }, p.keywords.map((k) => h("span", null, k))) : null),
       h("div", { class: "actions" },
-        pdf ? h("a", { class: "btn primary", href: pdf, target: "_blank", rel: "noopener", onclick: () => act({ op: "download", id: p.id }) }, "Download PDF")
-            : h("a", { class: "btn primary", href: p.url, target: "_blank", rel: "noopener", onclick: () => act({ op: "download", id: p.id }) }, "Open"),
+        p.uploadPath ? h("button", { type: "button", class: "btn primary", onclick: () => openUpload(p) }, "Open PDF")
+          : pdf ? h("a", { class: "btn primary", href: pdf, target: "_blank", rel: "noopener", onclick: () => act({ op: "download", id: p.id }) }, "Download PDF")
+          : p.url ? h("a", { class: "btn primary", href: p.url, target: "_blank", rel: "noopener", onclick: () => act({ op: "download", id: p.id }) }, "Open") : null,
         (p.links || []).map((l) => h("a", { class: "btn", href: l.url, target: "_blank", rel: "noopener", onclick: () => act({ op: "open", id: p.id }) }, l.label)),
         h("button", { type: "button", class: "btn", "aria-pressed": String(!!s.saved), onclick: () => act({ op: "save", id: p.id, value: !s.saved }) }, s.saved ? "Saved" : "Save for later"),
         h("button", { type: "button", class: "btn", "aria-pressed": String(!!s.skipped), onclick: () => {
@@ -313,6 +362,7 @@
         h("button", { type: "button", class: "btn", "aria-expanded": String(noteOpen), onclick: () => { noteOpen ? S.openNotes.delete(p.id) : S.openNotes.add(p.id); render(); } }, s.note ? "Note ✓" : "Add note"),
         h("span", { class: "status" }, status.join(" · "))),
       h("div", { class: "rate" }, h("span", null, "Your rating"), scale),
+      isAssigned ? teachToggle(p, s) : null,
       noteOpen ? h("div", { class: "note" }, h("textarea", { id: "note-" + p.id, placeholder: "What stood out, or why it missed. Notes help the profile.", "aria-label": "Note on " + p.title,
         onchange: (e) => act({ op: "note", id: p.id, value: e.target.value }) }, s.note || "")) : null);
   }
@@ -348,6 +398,95 @@
     if (S.runsLoaded < S.tree.length && view !== "new") nodes.push(h("button", { type: "button", class: "btn more-runs", onclick: () => loadMoreRuns(60) }, "Load older digests"));
     return nodes;
   }
+  function assignedItems() {
+    const u = user();
+    const items = [...S.papers.values()].filter((p) => p.feeds.includes("assigned"));
+    for (const [id, r] of S.inbox) {
+      if (S.papers.has(id) && S.papers.get(id).feeds.includes("assigned")) continue;
+      items.push({ id, title: r.title, url: r.link || "", uploadPath: r.uploadPath, kind: "paper", feeds: ["assigned"], appearances: [], firstSeen: (r.addedAt || "").slice(0, 10), lastSeen: (r.addedAt || "").slice(0, 10),
+        assigned: { by: r.assignedBy, due: r.dueDate, note: r.note, addedAt: r.addedAt }, pending: true });
+    }
+    let arr = items;
+    if (ui.hideDone) arr = arr.filter((p) => !(u.papers[p.id] || {}).rating);
+    if (ui.q) arr = arr.filter((p) => haystack(p).includes(ui.q) || String((p.assigned || {}).by || "").toLowerCase().includes(ui.q));
+    const due = (p) => (p.assigned && p.assigned.due) || "9999";
+    return arr.sort((a, b) => due(a).localeCompare(due(b)) || String((b.assigned || {}).addedAt || "").localeCompare(String((a.assigned || {}).addedAt || "")));
+  }
+
+  // The form is built once and reused across re-renders, so a background save
+  // never wipes what you've typed or the file you picked.
+  function addForm() {
+    if (!S.addFormEl) S.addFormEl = buildAddForm();
+    return S.addFormEl;
+  }
+  function closeAddForm() { S.showAdd = false; S.addFormEl = null; render(); }
+  function buildAddForm() {
+    const byValues = [...new Set([...S.inbox.values()].map((r) => r.assignedBy).concat([...S.papers.values()].map((p) => (p.assigned || {}).by)).filter(Boolean))];
+    const f = {
+      title: h("input", { type: "text", id: "ar-title", required: true, placeholder: "e.g. Nesterov, Lectures on Convex Optimization, ch. 2" }),
+      file: h("input", { type: "file", id: "ar-file", accept: "application/pdf,.pdf" }),
+      link: h("input", { type: "url", id: "ar-link", placeholder: "https://arxiv.org/abs/… or any link" }),
+      by: h("input", { type: "text", id: "ar-by", list: "ar-by-list", placeholder: "e.g. ML Theory course, or Advisor" }),
+      due: h("input", { type: "date", id: "ar-due" }),
+      note: h("textarea", { id: "ar-note", placeholder: "Optional: which sections, what to focus on" }),
+    };
+    const msg = h("p", { class: "form-msg", role: "status" }, S.uploading);
+    const submit = async (e) => {
+      e.preventDefault();
+      const title = f.title.value.trim(), link = f.link.value.trim(), file = f.file.files[0];
+      if (!title) { msg.textContent = "Add a title so you can find it later."; f.title.focus(); return; }
+      if (!file && !link) { msg.textContent = "Attach a PDF or paste a link."; return; }
+      if (file && file.size > MAX_UPLOAD_MB * 1024 * 1024) { msg.textContent = "That PDF is over " + MAX_UPLOAD_MB + " MB. Paste a link to it instead."; return; }
+      if (link && !/^https?:\/\//i.test(link)) { msg.textContent = "The link should start with https://"; return; }
+      if (S.uploading) return;
+      const today = new Date().toISOString().slice(0, 10);
+      const base = Core.idForReading(title, link, today);
+      const taken = (x) => S.inbox.has(x) || (S.papers.has(x) && S.papers.get(x).feeds.includes("assigned"));
+      let id = base;
+      for (let n = 2; taken(id); n++) id = base + "-" + n;
+      const reading = { id, title, link: link || null, uploadPath: null, assignedBy: f.by.value.trim() || null, dueDate: f.due.value || null, note: f.note.value.trim() || null, addedAt: new Date().toISOString() };
+      try {
+        if (file) {
+          S.uploading = "Uploading " + file.name + "…"; msg.textContent = S.uploading;
+          const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = () => rej(r.error); r.readAsDataURL(file); });
+          reading.uploadPath = "uploads/" + id + ".pdf";
+          await gh(repoPath() + "/contents/" + reading.uploadPath, { method: "PUT", body: { message: "Add reading PDF: " + title.slice(0, 60), content: b64, branch: CFG.branch } });
+        }
+        S.uploading = "Saving…"; msg.textContent = S.uploading;
+        await gh(repoPath() + "/contents/inbox/" + id + ".json", { method: "PUT", body: { message: "Add assigned reading: " + title.slice(0, 60), content: b64encode(JSON.stringify(reading, null, 1) + "\n"), branch: CFG.branch } });
+        S.inbox.set(id, reading); S.uploading = "";
+        toast("Added. Its summary arrives with the next daily run.");
+        closeAddForm();
+      } catch (err) {
+        S.uploading = "";
+        msg.textContent = err.status === 422 ? "A reading with this name already exists. Change the title slightly and try again." : explain(err);
+      }
+    };
+    return h("form", { class: "panel addform", onsubmit: submit },
+      h("h2", null, "Add a reading"),
+      h("label", { for: "ar-title" }, "Title"), f.title,
+      h("div", { class: "grid2" },
+        h("div", { class: "field" }, h("label", { for: "ar-file" }, "PDF (up to " + MAX_UPLOAD_MB + " MB)"), f.file),
+        h("div", { class: "field" }, h("label", { for: "ar-link" }, "or a link"), f.link)),
+      h("div", { class: "grid2" },
+        h("div", { class: "field" }, h("label", { for: "ar-by" }, "Assigned by"), f.by, h("datalist", { id: "ar-by-list" }, byValues.map((v) => h("option", { value: v })))),
+        h("div", { class: "field" }, h("label", { for: "ar-due" }, "Due date (optional)"), f.due)),
+      h("label", { for: "ar-note" }, "Note"), f.note,
+      h("div", { class: "row" },
+        h("button", { type: "submit", class: "btn primary", id: "ar-submit" }, "Add reading"),
+        h("button", { type: "button", class: "btn", onclick: closeAddForm }, "Cancel")),
+      msg);
+  }
+
+  function assignedView() {
+    const nodes = [h("p", { class: "intro" }, "Readings from your courses and advisor, soonest due first. Each gets a summary and worth-reading score with the next daily run. They only teach your recommendations if you choose Yes on the card.")];
+    nodes.push(S.showAdd ? addForm() : h("button", { type: "button", class: "btn primary add-btn", onclick: () => { S.showAdd = true; render(); setTimeout(() => $("ar-title") && $("ar-title").focus(), 0); } }, "+ Add a reading"));
+    const arr = assignedItems();
+    if (!arr.length) nodes.push(h("p", { class: "empty" }, ui.q ? "Nothing matches “" + ui.q + "”." : "No assigned readings yet. Add one with a PDF or a link."));
+    else nodes.push(h("section", { class: "day" }, arr.map(card)));
+    return nodes;
+  }
+
   function rankIn(p, feed, date) { const a = p.appearances.find((x) => x.feed === feed && x.date === date); return a ? a.rank || 99 : 99; }
 
   function termEditor(list, label, cls) {
@@ -457,11 +596,12 @@
     else if (S.error) nodes.push(h("p", { class: "notice err" }, S.error), h("button", { type: "button", class: "btn", onclick: loadAll }, "Try again"));
     else if (!S.loaded) nodes.push(h("p", { class: "empty" }, "Loading your papers…"));
     else if (ui.view === "profile") nodes.push(...profileView());
-    else if (!S.papers.size) nodes.push(h("p", { class: "empty" }, "No digests yet. Papers appear here after the next scheduled run."));
+    else if (!S.papers.size && ui.view !== "assigned") nodes.push(h("p", { class: "empty" }, "No digests yet. Papers appear here after the next scheduled run."));
+    else if (ui.view === "assigned") nodes.push(h("div", { class: "list" }, assignedView()));
     else nodes.push(h("div", { class: "list" }, paperList(ui.view)));
     const focusId = document.activeElement && document.activeElement.id;
     $("main").replaceChildren(...nodes);
-    if (focusId && $(focusId) && /^(note-|add-|token)/.test(focusId)) $(focusId).focus();
+    if (focusId && $(focusId) && /^(note-|add-|token|ar-)/.test(focusId)) $(focusId).focus();
   }
 
   function route() {

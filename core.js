@@ -2,7 +2,8 @@
 (function (root) {
   "use strict";
 
-  const RUN_FILE = /^papers\/(\d{4}-\d{2}-\d{2})-(daily|weekly|eos)(?:-(\d+))?\.json$/;
+  const RUN_FILE = /^papers\/(\d{4}-\d{2}-\d{2})-(daily|weekly|eos|assigned)(?:-(\d+))?\.json$/;
+  const INBOX_FILE = /^inbox\/([a-z0-9-]+)\.json$/;
 
   function emptyUser() {
     return { version: 1, papers: {}, profileOverrides: { boost: [], block: [] } };
@@ -58,6 +59,9 @@
           p.skipped = !!op.value;
           if (p.skipped) p.skippedAt = at; else delete p.skippedAt;
           break;
+        case "teach":
+          if (op.value === true || op.value === false) p.teach = op.value; else delete p.teach;
+          break;
         case "note":
           if (op.value && String(op.value).trim()) p.note = String(op.value).slice(0, 4000);
           else delete p.note;
@@ -101,6 +105,20 @@
     return map;
   }
 
+  // Same ID rule the scheduled runs use (SCHEMA.md), so an assigned arXiv paper
+  // merges with the same paper if a digest ever sends it.
+  function slug(text, max) {
+    return String(text || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, max || 60).replace(/-+$/g, "");
+  }
+  function idForReading(title, link, date) {
+    const m = /arxiv\.org\/(?:abs|pdf)\/(\d{4}\.\d{4,5})/i.exec(link || "") || /huggingface\.co\/papers\/(\d{4}\.\d{4,5})/i.exec(link || "");
+    if (m) return "ax-" + m[1].replace(".", "-");
+    const s = slug(title, 48) || "reading";
+    return "up-" + String(date || "").replace(/-/g, "") + "-" + s;
+  }
+  function parseInboxPath(path) { const m = INBOX_FILE.exec(path); return m ? m[1] : null; }
+
   function pearson(xs, ys) {
     const n = xs.length; if (n < 3) return null;
     const mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
@@ -121,7 +139,7 @@
     return { pts, mae, r: pearson(pts.map((q) => q.score), pts.map((q) => q.rating)) };
   }
 
-  const api = { RUN_FILE, emptyUser, normalizeUser, applyOps, parseRunPath, mergeRuns, calibration, pearson };
+  const api = { RUN_FILE, INBOX_FILE, slug, idForReading, parseInboxPath, emptyUser, normalizeUser, applyOps, parseRunPath, mergeRuns, calibration, pearson };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PTCore = api;
 })(typeof window !== "undefined" ? window : globalThis);

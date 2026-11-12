@@ -51,7 +51,7 @@ h1 a { color: inherit; text-decoration: none; }
 .count:empty { display: none; }
 
 .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-input[type="search"], input[type="text"], input[type="password"], select, textarea {
+input[type="search"], input[type="text"], input[type="password"], input[type="url"], input[type="date"], select, textarea {
   font: inherit; font-size: 0.9rem; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
 input[type="search"] { flex: 1 1 220px; min-width: 0; }
 .check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.88rem; color: var(--muted); }
@@ -66,7 +66,7 @@ button { font: inherit; cursor: pointer; }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; }
 .card.dim { opacity: 0.55; }
-.card > .body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card > .body { display: flex; flex-direction: column; gap: 8px; min-width: 0; grid-column: 1; }
 .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 0.8rem; color: var(--muted); }
 .badge { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; padding: 1px 7px; border-radius: 4px; background: var(--chip); color: var(--ink); }
 .badge.top { background: var(--accent-soft); color: var(--accent); }
@@ -102,6 +102,20 @@ button { font: inherit; cursor: pointer; }
 .scale button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .scale button.in { background: var(--accent-soft); border-color: var(--accent-soft); }
 .note { grid-column: 1 / -1; }
+.assigned { margin: 0; font-size: 0.86rem; color: var(--warn); font-weight: 500; }
+.assigned span { color: var(--muted); font-weight: 400; }
+.teach { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.teach > span { font-size: 0.8rem; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; margin-right: 4px; }
+.teach small { color: var(--muted); font-size: 0.8rem; }
+.add-btn { align-self: flex-start; }
+.addform label { font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.addform .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.addform input, .addform textarea { width: 100%; }
+.addform input[type="file"] { padding: 6px; border: 1px dashed var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; font-size: 0.85rem; }
+.addform textarea { min-height: 64px; resize: vertical; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.form-msg { margin: 0; color: var(--muted); font-size: 0.88rem; }
+.form-msg:empty { display: none; }
 .note textarea { width: 100%; min-height: 70px; resize: vertical; }
 
 .empty, .notice { border: 1px dashed var(--line); border-radius: 12px; padding: 24px; color: var(--muted); text-align: center; margin: 0; }

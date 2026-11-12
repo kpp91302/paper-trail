@@ -48,4 +48,15 @@ assert.strictEqual(m.get("x").topPick, true);
 const cal = C.calibration(m, { papers: { x: { rating: 9 } } });
 assert.strictEqual(cal.pts.length, 1); assert.strictEqual(cal.mae, 2);
 assert.ok(Math.abs(C.pearson([1, 2, 3], [2, 4, 6]) - 1) < 1e-9);
+// assigned readings
+assert.deepStrictEqual(C.parseRunPath("papers/2026-11-13-assigned.json"), { date: "2026-11-13", feed: "assigned", seq: 1 });
+assert.strictEqual(C.parseInboxPath("inbox/up-20261112-convex-analysis-ch-3.json"), "up-20261112-convex-analysis-ch-3");
+assert.strictEqual(C.parseInboxPath("inbox/../x.json"), null);
+assert.strictEqual(C.idForReading("Anything", "https://arxiv.org/abs/2611.08358v2", "2026-11-12"), "ax-2611-08358");
+assert.strictEqual(C.idForReading("Anything", "https://arxiv.org/pdf/2611.08358", "2026-11-12"), "ax-2611-08358");
+assert.strictEqual(C.idForReading("Nesterov's Lectures: Ch. 2 (Smooth Convex Optimization)", "", "2026-11-12"), "up-20261112-nesterov-s-lectures-ch-2-smooth-convex-optimizat");
+assert.ok(/^[a-z0-9-]+$/.test(C.idForReading("Über café — ünïcode!!", "", "2026-11-12")));
+let t2 = C.applyOps(null, [{ op: "teach", id: "a", value: true }]); assert.strictEqual(t2.papers.a.teach, true);
+t2 = C.applyOps(t2, [{ op: "teach", id: "a", value: false }]); assert.strictEqual(t2.papers.a.teach, false);
+t2 = C.applyOps(t2, [{ op: "teach", id: "a", value: null }]); assert.strictEqual(t2.papers.a.teach, undefined);
 console.log("core tests passed");
